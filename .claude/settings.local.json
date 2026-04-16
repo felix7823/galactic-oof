@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(/opt/homebrew/bin/node --version)",
+      "Bash(/opt/homebrew/bin/fnm --version)",
+      "Read(//opt/homebrew/bin/**)",
+      "Bash(brew --version)",
+      "Bash(export PATH=\"/opt/homebrew/bin:$PATH\")",
+      "Bash(npm --version)",
+      "Bash(npm create:*)",
+      "Bash(npm install:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npm run:*)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000)",
+      "mcp__Claude_Preview__preview_start"
+    ]
+  }
+}
