@@ -61,7 +61,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   update(_time: number, delta: number): void {
-    this.player.update(delta);
+    this.player.update(_time, delta);
     this.waveManager.cullOffscreen();
 
     // ── Beam hit detection ───────────────────────────────────────────────────
@@ -72,6 +72,19 @@ export class GameScene extends Phaser.Scene {
       const destroyed = enemy.hit();
       if (destroyed) this.onEnemyDestroyed(enemy);
     }
+
+    // ── Laser projectile ↔ Enemy collisions ─────────────────────────────────
+    this.physics.overlap(
+      this.player.lasers,
+      this.waveManager.enemies,
+      (laserObj, enemyObj) => {
+        const laser = laserObj as Phaser.Physics.Arcade.Image;
+        const enemy = enemyObj as EnemyShip;
+        laser.destroy();
+        const destroyed = enemy.hit();
+        if (destroyed) this.onEnemyDestroyed(enemy);
+      },
+    );
 
     // ── Enemy ↔ Player body collisions ───────────────────────────────────────
     this.physics.overlap(
