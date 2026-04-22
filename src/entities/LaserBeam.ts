@@ -3,19 +3,19 @@ import { EnemyShip } from './EnemyShip';
 
 export type BeamState = 'idle' | 'firing' | 'recharging';
 
-const FIRE_DURATION     = 3000; // ms beam stays on
-const RECHARGE_DURATION = 2000; // ms before can fire again
-const DAMAGE_TICK_MS    = 300;  // how often beam damages enemies in its path
-const HIT_HALF_WIDTH    = 14;   // px either side of beam centre counted as a hit
+const FIRE_DURATION     = 3000;
+const RECHARGE_DURATION = 2000;
+const DAMAGE_TICK_MS    = 300;
+const HIT_HALF_WIDTH    = 14;
 
 export class LaserBeam {
   private readonly graphics: Phaser.GameObjects.Graphics;
+  private readonly glowColor: number;
 
   state: BeamState = 'idle';
   private elapsed    = 0;
   private damageTick = 0;
 
-  /** 0–1: 1 = fully ready, 0 = just fired / empty. Used for HUD bar. */
   get readiness(): number {
     if (this.state === 'idle')       return 1;
     if (this.state === 'firing')     return 1 - this.elapsed / FIRE_DURATION;
@@ -23,12 +23,16 @@ export class LaserBeam {
     return 1;
   }
 
-  constructor(scene: Phaser.Scene) {
-    this.graphics = scene.add.graphics();
-    this.graphics.setDepth(20); // always above ships and enemies
+  /**
+   * @param scene      Phaser scene
+   * @param glowColor  Primary glow colour (e.g. 0x00ccff for cyan, 0xff8800 for orange)
+   */
+  constructor(scene: Phaser.Scene, glowColor = 0x00ccff) {
+    this.glowColor = glowColor;
+    this.graphics  = scene.add.graphics();
+    this.graphics.setDepth(20);
   }
 
-  /** Call when the player presses fire. Only activates from idle state. */
   tryFire(): void {
     if (this.state === 'idle') {
       this.state      = 'firing';
@@ -37,13 +41,6 @@ export class LaserBeam {
     }
   }
 
-  /**
-   * Call every frame. Returns enemies that should receive a damage hit this tick.
-   * @param delta     ms since last frame
-   * @param originX   x centre of player ship
-   * @param originY   top edge of player ship (beam starts here)
-   * @param enemies   active enemy group
-   */
   update(
     delta: number,
     originX: number,
@@ -64,7 +61,6 @@ export class LaserBeam {
       return [];
     }
 
-    // ── Firing state ─────────────────────────────────────────────────────────
     if (this.elapsed >= FIRE_DURATION) {
       this.state   = 'recharging';
       this.elapsed = 0;
@@ -73,7 +69,6 @@ export class LaserBeam {
 
     this.drawBeam(originX, originY);
 
-    // Damage tick — only hit enemies every DAMAGE_TICK_MS, not every frame
     this.damageTick += delta;
     if (this.damageTick < DAMAGE_TICK_MS) return [];
     this.damageTick = 0;
@@ -88,33 +83,30 @@ export class LaserBeam {
     return hits;
   }
 
-  /**
-   * Draw the beam as layered filled rectangles — reliable across WebGL renderers.
-   * Wide soft outer glow → medium glow → thin inner glow → 2px bright white core.
-   */
   private drawBeam(x: number, y: number): void {
-    const flicker  = 0.75 + Math.random() * 0.25;
-    const beamH    = y; // from screen top (0) down to origin (y)
+    const flicker = 0.75 + Math.random() * 0.25;
+    const beamH   = y;
+    const c       = this.glowColor;
 
-    // Layer 1: wide outer glow
-    this.graphics.fillStyle(0x0099cc, 0.07 * flicker);
+    // Wide outer glow
+    this.graphics.fillStyle(c, 0.07 * flicker);
     this.graphics.fillRect(x - 12, 0, 24, beamH);
 
-    // Layer 2: medium glow
-    this.graphics.fillStyle(0x00ccff, 0.20 * flicker);
+    // Medium glow
+    this.graphics.fillStyle(c, 0.20 * flicker);
     this.graphics.fillRect(x - 6, 0, 12, beamH);
 
-    // Layer 3: inner glow
-    this.graphics.fillStyle(0x66ffff, 0.50 * flicker);
+    // Inner glow
+    this.graphics.fillStyle(c, 0.50 * flicker);
     this.graphics.fillRect(x - 3, 0, 6, beamH);
 
-    // Layer 4: bright white core
+    // Bright white core
     this.graphics.fillStyle(0xffffff, flicker);
     this.graphics.fillRect(x - 1, 0, 2, beamH);
 
-    // Muzzle flash at origin
+    // Muzzle flash
     const flashR = 5 + Math.random() * 5;
-    this.graphics.fillStyle(0x00ffff, 0.55 * flicker);
+    this.graphics.fillStyle(c, 0.55 * flicker);
     this.graphics.fillCircle(x, y, flashR * 2);
     this.graphics.fillStyle(0xffffff, 0.9 * flicker);
     this.graphics.fillCircle(x, y, flashR);

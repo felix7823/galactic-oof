@@ -19,9 +19,9 @@ export class BootScene extends Phaser.Scene {
   private generatePlaceholderTextures(): void {
     const g = this.make.graphics({ x: 0, y: 0 });
 
-    // Player ship — teal upward-pointing triangle
+    // Player ship — white triangle so setTint() shows the correct colour
     g.clear();
-    g.fillStyle(0x00ffcc);
+    g.fillStyle(0xffffff);
     g.fillTriangle(16, 0, 0, 32, 32, 32);
     g.generateTexture('player-ship', 32, 32);
 
