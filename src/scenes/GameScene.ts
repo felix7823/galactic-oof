@@ -1,43 +1,53 @@
 import * as Phaser from 'phaser';
 import { PlayerShip, PLAYER1_CONFIG, PLAYER2_CONFIG } from '../entities/PlayerShip';
 import { EnemyShip } from '../entities/EnemyShip';
+import { BlackHole } from '../entities/BlackHole';
 import { WaveManager } from '../systems/WaveManager';
 
-const PLAYER_LIVES = 3;
+const PLAYER_LIVES   = 3;
+const SHIP_SIZE      = 32;
+const BH_DEPLOY_DIST = SHIP_SIZE * 3; // 3 ship-lengths above player
 
 // Beam bar layout
 const BAR_W = 140;
 const BAR_H = 12;
+const BAR_Y = 60;
 
 export class GameScene extends Phaser.Scene {
   private player1!: PlayerShip;
   private player2!: PlayerShip;
   private waveManager!: WaveManager;
+  private readonly blackHoles: BlackHole[] = [];
 
-  private score = 0;
-  private p1Lives = PLAYER_LIVES;
-  private p2Lives = PLAYER_LIVES;
+  private score    = 0;
+  private p1Lives  = PLAYER_LIVES;
+  private p2Lives  = PLAYER_LIVES;
+  private p1BhCharges = 0;
+  private p2BhCharges = 0;
 
-  // HUD — Player 1 (left side, cyan)
+  // HUD
   private scoreText!:   Phaser.GameObjects.Text;
+  private waveText!:    Phaser.GameObjects.Text;
   private p1LivesText!: Phaser.GameObjects.Text;
+  private p2LivesText!: Phaser.GameObjects.Text;
   private p1BeamLabel!: Phaser.GameObjects.Text;
   private p1BeamFill!:  Phaser.GameObjects.Rectangle;
-
-  // HUD — Player 2 (right side, orange)
-  private p2LivesText!: Phaser.GameObjects.Text;
-  private waveText!:    Phaser.GameObjects.Text;
   private p2BeamLabel!: Phaser.GameObjects.Text;
   private p2BeamFill!:  Phaser.GameObjects.Rectangle;
+  private p1BhText!:    Phaser.GameObjects.Text;
+  private p2BhText!:    Phaser.GameObjects.Text;
 
   constructor() {
     super({ key: 'GameScene' });
   }
 
   create(): void {
-    this.score    = 0;
-    this.p1Lives  = PLAYER_LIVES;
-    this.p2Lives  = PLAYER_LIVES;
+    this.score       = 0;
+    this.p1Lives     = PLAYER_LIVES;
+    this.p2Lives     = PLAYER_LIVES;
+    this.p1BhCharges = 0;
+    this.p2BhCharges = 0;
+    this.blackHoles.length = 0;
 
     const { width, height } = this.scale;
 
@@ -48,34 +58,31 @@ export class GameScene extends Phaser.Scene {
       this.add.circle(x, y, Phaser.Math.FloatBetween(1, 2.5), 0xffffff, Phaser.Math.FloatBetween(0.3, 1));
     }
 
-    // Players — spread across the bottom
     this.player1 = new PlayerShip(this, width * 0.35, height - 60, PLAYER1_CONFIG);
     this.player2 = new PlayerShip(this, width * 0.65, height - 60, PLAYER2_CONFIG);
 
-    // Enemies
     this.waveManager = new WaveManager(this);
     this.waveManager.startNextWave();
 
     // ── HUD ──────────────────────────────────────────────────────────────────
-    const BAR_Y = 60;
-
-    // Shared score + wave
     this.scoreText = this.add.text(width / 2, 12, 'Score: 0', { fontSize: '18px', color: '#ffffff' }).setOrigin(0.5, 0);
-    this.waveText  = this.add.text(width / 2, 36, 'Wave: 1',  { fontSize: '14px', color: '#ffaa00' }).setOrigin(0.5, 0);
+    this.waveText  = this.add.text(width / 2, 34, 'Wave: 1',  { fontSize: '14px', color: '#ffaa00' }).setOrigin(0.5, 0);
 
-    // P1 lives + beam bar (left)
+    // P1 (left)
     this.add.text(12, 12, 'P1', { fontSize: '13px', color: '#00ffcc' });
     this.p1LivesText = this.add.text(12, 28, `Lives: ${this.p1Lives}`, { fontSize: '14px', color: '#00ffcc' });
-    this.p1BeamLabel = this.add.text(12, BAR_Y - 2, 'BEAM  READY', { fontSize: '10px', color: '#aaaaaa' });
-    this.add.rectangle(12, BAR_Y + 12, BAR_W, BAR_H, 0x222222).setOrigin(0);
-    this.p1BeamFill = this.add.rectangle(13, BAR_Y + 13, BAR_W - 2, BAR_H - 2, 0x00ffcc).setOrigin(0);
+    this.p1BeamLabel = this.add.text(12, BAR_Y - 2,      'BEAM  READY', { fontSize: '10px', color: '#aaaaaa' });
+    this.add.rectangle(12,  BAR_Y + 12, BAR_W, BAR_H, 0x222222).setOrigin(0);
+    this.p1BeamFill  = this.add.rectangle(13, BAR_Y + 13, BAR_W - 2, BAR_H - 2, 0x00ffcc).setOrigin(0);
+    this.p1BhText    = this.add.text(12, BAR_Y + 30, '⚫ BH: 0', { fontSize: '11px', color: '#cc00ff' });
 
-    // P2 lives + beam bar (right)
+    // P2 (right)
     this.add.text(width - 12, 12, 'P2', { fontSize: '13px', color: '#ff8800' }).setOrigin(1, 0);
     this.p2LivesText = this.add.text(width - 12, 28, `Lives: ${this.p2Lives}`, { fontSize: '14px', color: '#ff8800' }).setOrigin(1, 0);
-    this.p2BeamLabel = this.add.text(width - 12, BAR_Y - 2, 'BEAM  READY', { fontSize: '10px', color: '#aaaaaa' }).setOrigin(1, 0);
+    this.p2BeamLabel = this.add.text(width - 12, BAR_Y - 2,      'BEAM  READY', { fontSize: '10px', color: '#aaaaaa' }).setOrigin(1, 0);
     this.add.rectangle(width - 12 - BAR_W, BAR_Y + 12, BAR_W, BAR_H, 0x222222).setOrigin(0);
-    this.p2BeamFill = this.add.rectangle(width - 12 - BAR_W + 1, BAR_Y + 13, BAR_W - 2, BAR_H - 2, 0xff8800).setOrigin(0);
+    this.p2BeamFill  = this.add.rectangle(width - 12 - BAR_W + 1, BAR_Y + 13, BAR_W - 2, BAR_H - 2, 0xff8800).setOrigin(0);
+    this.p2BhText    = this.add.text(width - 12, BAR_Y + 30, 'BH: 0 ⚫', { fontSize: '11px', color: '#cc00ff' }).setOrigin(1, 0);
   }
 
   update(time: number, delta: number): void {
@@ -84,6 +91,21 @@ export class GameScene extends Phaser.Scene {
     this.waveManager.cullOffscreen();
 
     const enemies = this.waveManager.enemies;
+
+    // ── Black holes ───────────────────────────────────────────────────────────
+    this.handleBlackHoleDeployment();
+
+    for (let i = this.blackHoles.length - 1; i >= 0; i--) {
+      const bh = this.blackHoles[i];
+      const consumed = bh.update(delta, [this.player1, this.player2], enemies);
+
+      for (const player of consumed) {
+        if (player === this.player1) this.onPlayerHit(1);
+        else                         this.onPlayerHit(2);
+      }
+
+      if (bh.isExpired) this.blackHoles.splice(i, 1);
+    }
 
     // ── Beam hits ────────────────────────────────────────────────────────────
     for (const player of [this.player1, this.player2]) {
@@ -105,20 +127,29 @@ export class GameScene extends Phaser.Scene {
 
     // ── Enemy body hits ───────────────────────────────────────────────────────
     this.physics.overlap(this.player1, enemies, (_p, enemyObj) => {
-      if (this.player1.isGhost) return; // already dead, ignore
+      if (this.player1.isGhost) return;
       (enemyObj as EnemyShip).destroy();
       this.onPlayerHit(1);
     });
     this.physics.overlap(this.player2, enemies, (_p, enemyObj) => {
-      if (this.player2.isGhost) return; // already dead, ignore
+      if (this.player2.isGhost) return;
       (enemyObj as EnemyShip).destroy();
       this.onPlayerHit(2);
     });
 
     // ── Wave advancement ──────────────────────────────────────────────────────
     if (this.waveManager.currentWave > 0 && this.waveManager.isWaveClear) {
+      const completedWave = this.waveManager.currentWave;
       this.waveManager.startNextWave();
       this.waveText.setText(`Wave: ${this.waveManager.currentWave}`);
+
+      // Award a black hole charge every 4 waves
+      if (completedWave % 4 === 0) {
+        this.p1BhCharges++;
+        this.p2BhCharges++;
+        this.updateBhHud();
+        this.showCentreMessage('⚫  Black Hole charged!', '#cc00ff');
+      }
     }
 
     // ── HUD beam bars ─────────────────────────────────────────────────────────
@@ -126,16 +157,42 @@ export class GameScene extends Phaser.Scene {
     if (!this.player2.isGhost) this.updateBeamBar(this.player2.beam, this.p2BeamFill, this.p2BeamLabel, 0xff8800, 0xff6600);
   }
 
+  // ── Black hole deployment ─────────────────────────────────────────────────
+
+  private handleBlackHoleDeployment(): void {
+    if (this.player1.wantsBlackHole && this.p1BhCharges > 0 && !this.player1.isGhost) {
+      this.p1BhCharges--;
+      this.updateBhHud();
+      this.deployBlackHole(this.player1);
+    }
+    if (this.player2.wantsBlackHole && this.p2BhCharges > 0 && !this.player2.isGhost) {
+      this.p2BhCharges--;
+      this.updateBhHud();
+      this.deployBlackHole(this.player2);
+    }
+  }
+
+  private deployBlackHole(player: PlayerShip): void {
+    const bx = player.x;
+    const by = Math.max(player.y - BH_DEPLOY_DIST, 60); // clamp to stay on screen
+    this.blackHoles.push(new BlackHole(this, bx, by));
+  }
+
+  // ── HUD helpers ───────────────────────────────────────────────────────────
+
+  private updateBhHud(): void {
+    this.p1BhText.setText(`⚫ BH: ${this.p1BhCharges}`);
+    this.p2BhText.setText(`BH: ${this.p2BhCharges} ⚫`);
+  }
+
   private updateBeamBar(
-    beam:       PlayerShip['beam'],
-    fill:       Phaser.GameObjects.Rectangle,
-    label:      Phaser.GameObjects.Text,
-    readyColor: number,
+    beam:        PlayerShip['beam'],
+    fill:        Phaser.GameObjects.Rectangle,
+    label:       Phaser.GameObjects.Text,
+    readyColor:  number,
     firingColor: number,
   ): void {
-    const fillW = Math.max(0, (140 - 2) * beam.readiness);
-    fill.setSize(fillW, 10);
-
+    fill.setSize(Math.max(0, (BAR_W - 2) * beam.readiness), BAR_H - 2);
     if (beam.state === 'recharging') {
       fill.setFillStyle(0x884400);
       label.setText('BEAM  RECHARGING');
@@ -147,6 +204,8 @@ export class GameScene extends Phaser.Scene {
       label.setText('BEAM  READY');
     }
   }
+
+  // ── Combat events ─────────────────────────────────────────────────────────
 
   private onEnemyDestroyed(enemy: EnemyShip): void {
     this.score += enemy.points;
@@ -166,15 +225,14 @@ export class GameScene extends Phaser.Scene {
       this.p2LivesText.setText(`Lives: ${this.p2Lives}`);
     }
 
-    // Both ghosts → game over
     if (this.p1Lives <= 0 && this.p2Lives <= 0) {
+      this.blackHoles.forEach(bh => bh.destroy());
       this.player1.beam.destroy();
       this.player2.beam.destroy();
       this.scene.start('GameOverScene', { score: this.score });
       return;
     }
 
-    // This player just ran out of lives — become a ghost
     const justDied = playerNum === 1 ? this.p1Lives <= 0 : this.p2Lives <= 0;
     if (justDied) {
       player.setGhost();
@@ -182,48 +240,29 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    // Still has lives — flash to show the hit
-    this.tweens.add({
-      targets: player,
-      alpha: 0,
-      duration: 100,
-      yoyo: true,
-      repeat: 4,
-    });
+    // Still has lives — flash
+    this.tweens.add({ targets: player, alpha: 0, duration: 100, yoyo: true, repeat: 4 });
+  }
+
+  // ── Text popups ───────────────────────────────────────────────────────────
+
+  private showOof(x: number, y: number): void {
+    const t = this.add.text(x, y, 'Oooof!', { fontSize: '20px', color: '#ffff00', fontStyle: 'bold' }).setOrigin(0.5);
+    this.tweens.add({ targets: t, y: y - 40, alpha: 0, duration: 700, onComplete: () => t.destroy() });
   }
 
   private showGhostMessage(playerNum: 1 | 2): void {
     const { width, height } = this.scale;
     const color = playerNum === 1 ? '#00ffcc' : '#ff8800';
-    const msg   = this.add.text(width / 2, height / 2 - 20, `P${playerNum} is a ghost!`, {
-      fontSize: '22px',
-      color,
-      fontStyle: 'bold',
+    const t = this.add.text(width / 2, height / 2 - 20, `P${playerNum} is a ghost!`, {
+      fontSize: '22px', color, fontStyle: 'bold',
     }).setOrigin(0.5).setAlpha(0);
-
-    this.tweens.add({
-      targets: msg,
-      alpha: 1,
-      duration: 300,
-      yoyo: true,
-      hold: 1200,
-      onComplete: () => msg.destroy(),
-    });
+    this.tweens.add({ targets: t, alpha: 1, duration: 300, yoyo: true, hold: 1200, onComplete: () => t.destroy() });
   }
 
-  private showOof(x: number, y: number): void {
-    const oof = this.add.text(x, y, 'Oooof!', {
-      fontSize: '20px',
-      color: '#ffff00',
-      fontStyle: 'bold',
-    }).setOrigin(0.5);
-
-    this.tweens.add({
-      targets: oof,
-      y: y - 40,
-      alpha: 0,
-      duration: 700,
-      onComplete: () => oof.destroy(),
-    });
+  private showCentreMessage(msg: string, color: string): void {
+    const { width } = this.scale;
+    const t = this.add.text(width / 2, 200, msg, { fontSize: '20px', color, fontStyle: 'bold' }).setOrigin(0.5).setAlpha(0);
+    this.tweens.add({ targets: t, alpha: 1, duration: 300, yoyo: true, hold: 1400, onComplete: () => t.destroy() });
   }
 }

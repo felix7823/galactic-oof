@@ -6,9 +6,7 @@ export class BootScene extends Phaser.Scene {
   }
 
   preload(): void {
-    // Real sprite/audio assets will be loaded here once we have them.
-    // e.g. this.load.image('player-ship', 'assets/sprites/player-ship.png');
-    //      this.load.audio('oof', 'assets/audio/oof.mp3');
+    this.load.image('player1-ship', 'assets/sprites/player1-ship.png');
   }
 
   create(): void {
