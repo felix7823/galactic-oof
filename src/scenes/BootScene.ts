@@ -39,9 +39,9 @@ export class BootScene extends Phaser.Scene {
     g.fillTriangle(12, 28, 0, 14, 24, 14);
     g.generateTexture('enemy-sketh', 24, 28);
 
-    // Laser — thin cyan rectangle
+    // Laser — white rectangle so setTint() shows the correct colour per player
     g.clear();
-    g.fillStyle(0x00ffff);
+    g.fillStyle(0xffffff);
     g.fillRect(0, 0, 4, 16);
     g.generateTexture('laser', 4, 16);
 

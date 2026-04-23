@@ -24,28 +24,30 @@ export interface PlayerConfig {
 
 // ── Preset configs ────────────────────────────────────────────────────────────
 
+// P1 — left hand on WASD, Q/E for weapons
 export const PLAYER1_CONFIG: PlayerConfig = {
-  shipTint:  0x00ffcc,                               // teal
-  peltTint:  0x00ffff,                               // cyan pelts
-  beamColor: 0x00ccff,                               // cyan beam
-  peltKey:   Phaser.Input.Keyboard.KeyCodes.B,
-  beamKey:   Phaser.Input.Keyboard.KeyCodes.SPACE,
+  shipTint:  0x00ffcc,
+  peltTint:  0x00ffff,
+  beamColor: 0x00ccff,
+  peltKey:   Phaser.Input.Keyboard.KeyCodes.Q,
+  beamKey:   Phaser.Input.Keyboard.KeyCodes.E,
+  leftKey:   Phaser.Input.Keyboard.KeyCodes.A,
+  rightKey:  Phaser.Input.Keyboard.KeyCodes.D,
+  upKey:     Phaser.Input.Keyboard.KeyCodes.W,
+  downKey:   Phaser.Input.Keyboard.KeyCodes.S,
+};
+
+// P2 — right hand on arrow keys, . / for weapons
+export const PLAYER2_CONFIG: PlayerConfig = {
+  shipTint:  0xff8800,
+  peltTint:  0xff8800,
+  beamColor: 0xff6600,
+  peltKey:   Phaser.Input.Keyboard.KeyCodes.PERIOD,
+  beamKey:   Phaser.Input.Keyboard.KeyCodes.FORWARD_SLASH,
   leftKey:   Phaser.Input.Keyboard.KeyCodes.LEFT,
   rightKey:  Phaser.Input.Keyboard.KeyCodes.RIGHT,
   upKey:     Phaser.Input.Keyboard.KeyCodes.UP,
   downKey:   Phaser.Input.Keyboard.KeyCodes.DOWN,
-};
-
-export const PLAYER2_CONFIG: PlayerConfig = {
-  shipTint:  0xff8800,                               // orange ship
-  peltTint:  0xff8800,                               // orange pelts
-  beamColor: 0xff6600,                               // orange beam
-  peltKey:   Phaser.Input.Keyboard.KeyCodes.F,
-  beamKey:   Phaser.Input.Keyboard.KeyCodes.G,
-  leftKey:   Phaser.Input.Keyboard.KeyCodes.A,
-  rightKey:  Phaser.Input.Keyboard.KeyCodes.D,
-  upKey:     null,
-  downKey:   null,
 };
 
 // ── PlayerShip ────────────────────────────────────────────────────────────────
