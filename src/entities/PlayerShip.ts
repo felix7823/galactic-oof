@@ -3,7 +3,7 @@ import { LaserBeam } from './LaserBeam';
 import { Laser } from './Laser';
 
 const MOVE_SPEED       = 300;
-const FIRE_COOLDOWN_MS = 500;
+const FIRE_COOLDOWN_MS = 200;
 
 export interface PlayerConfig {
   textureKey:   string;   // sprite texture to use
@@ -24,7 +24,7 @@ export interface PlayerConfig {
 // P1 — WASD move | Q pelts | E beam | R black hole
 export const PLAYER1_CONFIG: PlayerConfig = {
   textureKey:   'player1-ship',
-  shipTint:     0xffffff,       // no tint — use the PNG's own colours
+  shipTint:     0xffffff,       // colour baked into texture, no tint needed
   peltTint:     0x00ffff,
   beamColor:    0x00ccff,
   peltKey:      Phaser.Input.Keyboard.KeyCodes.Q,
@@ -38,8 +38,8 @@ export const PLAYER1_CONFIG: PlayerConfig = {
 
 // P2 — Arrow keys move | . pelts | / beam | , black hole
 export const PLAYER2_CONFIG: PlayerConfig = {
-  textureKey:   'player-ship', // generated white triangle, tinted orange
-  shipTint:     0xff8800,
+  textureKey:   'player2-ship',
+  shipTint:     0xffffff,      // colour baked into texture, no tint needed
   peltTint:     0xff8800,
   beamColor:    0xff6600,
   peltKey:      Phaser.Input.Keyboard.KeyCodes.PERIOD,
@@ -77,7 +77,7 @@ export class PlayerShip extends Phaser.Physics.Arcade.Image {
     scene.add.existing(this);
     scene.physics.add.existing(this);
     this.setCollideWorldBounds(true);
-    this.setDisplaySize(96, 96); // normalise all ships to the same size
+    this.setDisplaySize(32, 32); // normalise all ships to the same size
     this.setTint(config.shipTint);
 
     this.cfg = config;

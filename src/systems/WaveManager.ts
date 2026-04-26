@@ -1,9 +1,11 @@
 import * as Phaser from 'phaser';
 import { EnemyShip, ENEMY_PRESETS } from '../entities/EnemyShip';
+import { ZoltShip } from '../entities/ZoltShip';
 
 export class WaveManager {
   private readonly scene: Phaser.Scene;
   readonly enemies: Phaser.GameObjects.Group;
+  readonly zolts:   ZoltShip[] = [];
   private wave = 0;
 
   constructor(scene: Phaser.Scene) {
@@ -17,15 +19,26 @@ export class WaveManager {
 
   startNextWave(): void {
     this.wave += 1;
-    const count = 5 + this.wave * 2;
+    const count  = 5 + this.wave * 2;
     const preset = this.wave <= 2 ? ENEMY_PRESETS.grok : ENEMY_PRESETS.sketh;
     const { width } = this.scene.scale;
 
-    for (let i = 0; i < count; i++) {
+    // Regular enemies (fewer slots if zolts are also spawning)
+    const zoltCount    = this.wave >= 10 ? Math.min(Math.floor((this.wave - 8) / 2), 3) : 0;
+    const regularCount = Math.max(count - zoltCount, 3);
+
+    for (let i = 0; i < regularCount; i++) {
       const x = Phaser.Math.Between(40, width - 40);
       const y = Phaser.Math.Between(-200, -40);
-      const enemy = new EnemyShip(this.scene, x, y, preset);
-      this.enemies.add(enemy);
+      this.enemies.add(new EnemyShip(this.scene, x, y, preset));
+    }
+
+    for (let i = 0; i < zoltCount; i++) {
+      const x    = Phaser.Math.Between(60, width - 60);
+      const y    = Phaser.Math.Between(-300, -80);
+      const zolt = new ZoltShip(this.scene, x, y);
+      this.enemies.add(zolt);
+      this.zolts.push(zolt);
     }
   }
 
