@@ -1,4 +1,6 @@
 import * as Phaser from 'phaser';
+import { getHighScore, getHighWave } from '../systems/HighScores';
+import { SFX } from '../systems/SoundManager';
 
 export class MenuScene extends Phaser.Scene {
   private selectedPlayers: 1 | 2 = 1;
@@ -65,6 +67,16 @@ export class MenuScene extends Phaser.Scene {
       color: '#555555',
     }).setOrigin(0.5);
 
+    // ── High scores ───────────────────────────────────────────────────────────
+    const hs = getHighScore();
+    const hw = getHighWave();
+    if (hs > 0 || hw > 0) {
+      this.add.text(width / 2, height - 36, `Best score: ${hs}   |   Best wave: ${hw}`, {
+        fontSize: '13px',
+        color: '#666666',
+      }).setOrigin(0.5);
+    }
+
     // Blink the start prompt
     this.tweens.add({
       targets: startText,
@@ -87,15 +99,21 @@ export class MenuScene extends Phaser.Scene {
 
   update(): void {
     if (Phaser.Input.Keyboard.JustDown(this.leftKey)) {
+      SFX.startMusic(); // safe to call multiple times — starts only once
       this.selectedPlayers = 1;
       this.updateSelection();
+      SFX.menuMove();
     }
     if (Phaser.Input.Keyboard.JustDown(this.rightKey)) {
+      SFX.startMusic();
       this.selectedPlayers = 2;
       this.updateSelection();
+      SFX.menuMove();
     }
     if (Phaser.Input.Keyboard.JustDown(this.spaceKey)) {
-      this.scene.start('GameScene', { players: this.selectedPlayers });
+      SFX.startMusic(); // in case they pressed nothing else first
+      SFX.menuConfirm();
+      this.scene.start('ColorSelectScene', { players: this.selectedPlayers });
     }
   }
 

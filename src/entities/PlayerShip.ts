@@ -1,6 +1,7 @@
 import * as Phaser from 'phaser';
 import { LaserBeam } from './LaserBeam';
 import { Laser } from './Laser';
+import { SFX } from '../systems/SoundManager';
 
 const MOVE_SPEED       = 300;
 const FIRE_COOLDOWN_MS = 200;
@@ -63,7 +64,7 @@ export class PlayerShip extends Phaser.Physics.Arcade.Image {
   private readonly upKey:        Phaser.Input.Keyboard.Key | null;
   private readonly downKey:      Phaser.Input.Keyboard.Key | null;
 
-  readonly beam:   LaserBeam;
+  beam:   LaserBeam;
   readonly lasers: Phaser.GameObjects.Group;
 
   private lastFiredAt = 0;
@@ -112,10 +113,12 @@ export class PlayerShip extends Phaser.Physics.Arcade.Image {
       if (Phaser.Input.Keyboard.JustDown(this.peltKey) && time > this.lastFiredAt + FIRE_COOLDOWN_MS) {
         this.lastFiredAt = time;
         this.lasers.add(new Laser(this.scene, this.x, this.y - 20, this.cfg.peltTint));
+        SFX.laser();
       }
 
       // Beam
       if (Phaser.Input.Keyboard.JustDown(this.beamKey)) {
+        if (this.beam.state === 'idle') SFX.beamFire();
         this.beam.tryFire();
       }
 
@@ -130,5 +133,12 @@ export class PlayerShip extends Phaser.Physics.Arcade.Image {
     this.isGhost = true;
     this.setAlpha(0.25);
     this.beam.destroy();
+  }
+
+  /** Undo ghost state — rebuilds the beam so the player can shoot again. */
+  revive(): void {
+    this.isGhost = false;
+    this.setAlpha(1);
+    this.beam = new LaserBeam(this.scene, this.cfg.beamColor);
   }
 }

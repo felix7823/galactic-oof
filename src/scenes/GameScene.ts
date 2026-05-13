@@ -6,6 +6,19 @@ import { ZoltShip } from '../entities/ZoltShip';
 import { BlackHole } from '../entities/BlackHole';
 import { LightningEffect } from '../entities/LightningEffect';
 import { WaveManager } from '../systems/WaveManager';
+import { type AbilityType, SOLO_COLOR_ABILITY, ABILITY_LABEL, ABILITY_CHARGES } from '../abilities/AbilityTypes';
+import { SonicWave } from '../abilities/SonicWave';
+import { FireCharge } from '../abilities/FireCharge';
+import { LightningStorm } from '../abilities/LightningStorm';
+import { WaterTornado } from '../abilities/WaterTornado';
+import { SalmonSalvo } from '../abilities/SalmonSalvo';
+import { LimeInfection } from '../abilities/LimeInfection';
+import { Missile } from '../abilities/Missile';
+import { Tsunami } from '../abilities/Tsunami';
+import { Apple } from '../entities/Apple';
+import { SuperApple } from '../entities/SuperApple';
+import { LaserPair } from '../entities/LaserPair';
+import { SFX } from '../systems/SoundManager';
 
 const PLAYER_LIVES   = 5;
 const SHIP_SIZE      = 32;
@@ -16,29 +29,44 @@ const BAR_W = 140;
 const BAR_H = 12;
 const BAR_Y = 60;
 
-// Palette for solo-mode random ship colour
-const SOLO_PALETTE = [
-  0xff0055, // crimson
-  0x00ff88, // mint
-  0xffdd00, // gold
-  0x00aaff, // azure
-  0xbb00ff, // violet
-  0xff6666, // salmon
-  0x55ff00, // lime
-  0x00ffdd, // aqua
-];
 
 export class GameScene extends Phaser.Scene {
-  private playerCount:  1 | 2  = 2;
-  private p1HudColor:   number = 0x00ffcc; // teal in 2P; random ship colour in 1P
+  private playerCount:    1 | 2  = 2;
+  private p1SelectedColor: number = 0xff0055;
+  private p2SelectedColor: number = 0x00aaff;
+  private p1HudColor:      number = 0x00ffcc;
+  private p2HudColor:      number = 0xff8800;
 
   private player1!: PlayerShip;
   private player2?: PlayerShip;          // undefined in 1-player mode
   private activePlayers: PlayerShip[] = [];
 
   private waveManager!: WaveManager;
-  private readonly blackHoles:      BlackHole[]      = [];
+  private readonly blackHoles:       BlackHole[]       = [];
   private readonly lightningEffects: LightningEffect[] = [];
+
+  // Per-color abilities
+  private p1AbilityType: AbilityType = 'blackhole';
+  private p2AbilityType: AbilityType = 'blackhole';
+
+  private readonly fireCharges:     FireCharge[]     = [];
+  private readonly lightningStorms: LightningStorm[] = [];
+  private readonly tornadoes:       WaterTornado[]   = [];
+  private readonly salmonSalvos:    SalmonSalvo[]    = [];
+  private readonly limeInfections:  LimeInfection[]  = [];
+  private readonly missiles:        Missile[]        = [];
+  private readonly tsunamis:        Tsunami[]        = [];
+  private readonly sonicWaves:      SonicWave[]      = [];
+
+  // Apple power-ups
+  private appleGroup!:       Phaser.GameObjects.Group;
+  private appleCountdown     = 0; // waves until next regular apple drop
+  private superAppleGroup!:  Phaser.GameObjects.Group;
+  private superAppleCountdown = 0; // waves until next super apple drop
+
+  // Beam-damage cooldown (prevents frame-rate-dependent multi-hits)
+  private p1BeamDmgCooldown = 0;
+  private p2BeamDmgCooldown = 0;
 
   private score    = 0;
   private p1Lives  = PLAYER_LIVES;
@@ -62,8 +90,10 @@ export class GameScene extends Phaser.Scene {
     super({ key: 'GameScene' });
   }
 
-  init(data: { players?: 1 | 2 }): void {
-    this.playerCount = data?.players ?? 2;
+  init(data: { players?: 1 | 2; p1Color?: number; p2Color?: number }): void {
+    this.playerCount      = data?.players  ?? 2;
+    this.p1SelectedColor  = data?.p1Color  ?? 0xff0055;
+    this.p2SelectedColor  = data?.p2Color  ?? 0x00aaff;
   }
 
   create(): void {
@@ -74,7 +104,25 @@ export class GameScene extends Phaser.Scene {
     this.p2BhCharges = 0;
     this.blackHoles.length       = 0;
     this.lightningEffects.length = 0;
+    this.fireCharges.length      = 0;
+    this.lightningStorms.length  = 0;
+    this.tornadoes.length        = 0;
+    this.salmonSalvos.length     = 0;
+    this.limeInfections.length   = 0;
+    this.missiles.length         = 0;
+    this.tsunamis.length         = 0;
+    this.sonicWaves.length       = 0;
     this.player2 = undefined;
+    this.p1BeamDmgCooldown = 0;
+    this.p2BeamDmgCooldown = 0;
+
+    // Apple groups — recreate each run so destroyed items from last game don't linger
+    if (this.appleGroup)      this.appleGroup.destroy(true);
+    if (this.superAppleGroup) this.superAppleGroup.destroy(true);
+    this.appleGroup          = this.add.group();
+    this.superAppleGroup     = this.add.group();
+    this.appleCountdown      = Phaser.Math.Between(1, 5);
+    this.superAppleCountdown = Phaser.Math.Between(6, 10);
     this.activePlayers = [];
 
     const { width, height } = this.scale;
@@ -88,14 +136,19 @@ export class GameScene extends Phaser.Scene {
 
     // ── Create players ────────────────────────────────────────────────────────
     if (this.playerCount === 1) {
-      const soloColor  = Phaser.Utils.Array.GetRandom(SOLO_PALETTE) as number;
-      this.p1HudColor  = soloColor;
-      const soloConfig = this.buildSoloConfig(soloColor);
-      this.player1 = new PlayerShip(this, width * 0.5, height - 60, soloConfig);
+      this.p1HudColor    = this.p1SelectedColor;
+      const soloConfig   = this.buildPlayerConfig(this.p1SelectedColor, 'player-p1-custom', 'smile', PLAYER1_CONFIG);
+      this.player1       = new PlayerShip(this, width * 0.5, height - 60, soloConfig);
+      this.p1AbilityType = SOLO_COLOR_ABILITY[this.p1SelectedColor] ?? 'blackhole';
     } else {
-      this.p1HudColor = 0x00ffcc;
-      this.player1 = new PlayerShip(this, width * 0.35, height - 60, PLAYER1_CONFIG);
-      this.player2 = new PlayerShip(this, width * 0.65, height - 60, PLAYER2_CONFIG);
+      this.p1HudColor    = this.p1SelectedColor;
+      this.p2HudColor    = this.p2SelectedColor;
+      const p1Config     = this.buildPlayerConfig(this.p1SelectedColor, 'player-p1-custom', 'smile', PLAYER1_CONFIG);
+      const p2Config     = this.buildPlayerConfig(this.p2SelectedColor, 'player-p2-custom', 'stern', PLAYER2_CONFIG);
+      this.player1       = new PlayerShip(this, width * 0.35, height - 60, p1Config);
+      this.player2       = new PlayerShip(this, width * 0.65, height - 60, p2Config);
+      this.p1AbilityType = SOLO_COLOR_ABILITY[this.p1SelectedColor] ?? 'blackhole';
+      this.p2AbilityType = SOLO_COLOR_ABILITY[this.p2SelectedColor] ?? 'blackhole';
     }
 
     this.activePlayers = this.player2
@@ -107,7 +160,7 @@ export class GameScene extends Phaser.Scene {
 
     // ── HUD ──────────────────────────────────────────────────────────────────
     this.scoreText = this.add.text(width / 2, 12, 'Score: 0', { fontSize: '18px', color: '#ffffff' }).setOrigin(0.5, 0);
-    this.waveText  = this.add.text(width / 2, 34, 'Wave: 1',  { fontSize: '14px', color: '#ffaa00' }).setOrigin(0.5, 0);
+    this.waveText  = this.add.text(width / 2, 34, `Wave: ${this.waveManager.currentWave}`, { fontSize: '14px', color: '#ffaa00' }).setOrigin(0.5, 0);
 
     // P1 (always shown, left side)
     const p1css = this.numToHex(this.p1HudColor);
@@ -116,16 +169,17 @@ export class GameScene extends Phaser.Scene {
     this.p1BeamLabel = this.add.text(12, BAR_Y - 2, 'BEAM  READY', { fontSize: '10px', color: '#aaaaaa' });
     this.add.rectangle(12, BAR_Y + 12, BAR_W, BAR_H, 0x222222).setOrigin(0);
     this.p1BeamFill  = this.add.rectangle(13, BAR_Y + 13, BAR_W - 2, BAR_H - 2, this.p1HudColor).setOrigin(0);
-    this.p1BhText    = this.add.text(12, BAR_Y + 30, '⚫ BH: 0', { fontSize: '11px', color: p1css });
+    this.p1BhText    = this.add.text(12, BAR_Y + 30, `${ABILITY_LABEL[this.p1AbilityType]}: 0`, { fontSize: '11px', color: p1css });
 
     // P2 (right side, 2-player only)
     if (this.playerCount === 2) {
-      this.add.text(width - 12, 12, 'P2', { fontSize: '13px', color: '#ff8800' }).setOrigin(1, 0);
-      this.p2LivesText = this.add.text(width - 12, 28, `Lives: ${this.p2Lives}`, { fontSize: '14px', color: '#ff8800' }).setOrigin(1, 0);
+      const p2css = this.numToHex(this.p2HudColor);
+      this.add.text(width - 12, 12, 'P2', { fontSize: '13px', color: p2css }).setOrigin(1, 0);
+      this.p2LivesText = this.add.text(width - 12, 28, `Lives: ${this.p2Lives}`, { fontSize: '14px', color: p2css }).setOrigin(1, 0);
       this.p2BeamLabel = this.add.text(width - 12, BAR_Y - 2, 'BEAM  READY', { fontSize: '10px', color: '#aaaaaa' }).setOrigin(1, 0);
       this.add.rectangle(width - 12 - BAR_W, BAR_Y + 12, BAR_W, BAR_H, 0x222222).setOrigin(0);
-      this.p2BeamFill  = this.add.rectangle(width - 12 - BAR_W + 1, BAR_Y + 13, BAR_W - 2, BAR_H - 2, 0xff8800).setOrigin(0);
-      this.p2BhText    = this.add.text(width - 12, BAR_Y + 30, 'BH: 0 ⚫', { fontSize: '11px', color: '#cc00ff' }).setOrigin(1, 0);
+      this.p2BeamFill  = this.add.rectangle(width - 12 - BAR_W + 1, BAR_Y + 13, BAR_W - 2, BAR_H - 2, this.p2HudColor).setOrigin(0);
+      this.p2BhText    = this.add.text(width - 12, BAR_Y + 30, `${ABILITY_LABEL[this.p2AbilityType]}: 0`, { fontSize: '11px', color: p2css }).setOrigin(1, 0);
     }
   }
 
@@ -136,9 +190,10 @@ export class GameScene extends Phaser.Scene {
 
     const enemies = this.waveManager.enemies;
 
-    // ── Black holes ───────────────────────────────────────────────────────────
-    this.handleBlackHoleDeployment();
+    // ── Ability deployment ────────────────────────────────────────────────────
+    this.handleAbilityDeployment();
 
+    // ── Black holes ───────────────────────────────────────────────────────────
     for (let i = this.blackHoles.length - 1; i >= 0; i--) {
       const bh = this.blackHoles[i];
       const consumed = bh.update(delta, this.activePlayers, enemies);
@@ -149,6 +204,100 @@ export class GameScene extends Phaser.Scene {
       }
 
       if (bh.isExpired) this.blackHoles.splice(i, 1);
+    }
+
+    // ── Fire charges ──────────────────────────────────────────────────────────
+    for (let i = this.fireCharges.length - 1; i >= 0; i--) {
+      const fc   = this.fireCharges[i];
+      const hits = fc.update(delta, enemies);
+      for (const e of hits) this.onEnemyDestroyed(e);
+      if (fc.isExpired) this.fireCharges.splice(i, 1);
+    }
+
+    // ── Lightning storms ──────────────────────────────────────────────────────
+    for (let i = this.lightningStorms.length - 1; i >= 0; i--) {
+      const ls   = this.lightningStorms[i];
+      const hits = ls.update(delta, enemies);
+      for (const e of hits) { if (e.hit()) this.onEnemyDestroyed(e); }
+      if (ls.isExpired) this.lightningStorms.splice(i, 1);
+    }
+
+    // ── Tornadoes ─────────────────────────────────────────────────────────────
+    for (let i = this.tornadoes.length - 1; i >= 0; i--) {
+      const t        = this.tornadoes[i];
+      const consumed = t.update(delta, this.activePlayers, enemies);
+      for (const player of consumed) {
+        if (player === this.player1) this.onPlayerHit(1);
+        else                         this.onPlayerHit(2);
+      }
+      if (t.isExpired) this.tornadoes.splice(i, 1);
+    }
+
+    // ── Salmon salvos ─────────────────────────────────────────────────────────
+    for (let i = this.salmonSalvos.length - 1; i >= 0; i--) {
+      const ss   = this.salmonSalvos[i];
+      const hits = ss.update(delta, enemies);
+      for (const e of hits) this.onEnemyDestroyed(e);
+      if (ss.isExpired) this.salmonSalvos.splice(i, 1);
+    }
+
+    // ── Lime infections ───────────────────────────────────────────────────────
+    for (let i = this.limeInfections.length - 1; i >= 0; i--) {
+      const li   = this.limeInfections[i];
+      const dead = li.update(delta, enemies);
+      for (const e of dead) this.onEnemyDestroyed(e);
+      if (li.isExpired) this.limeInfections.splice(i, 1);
+    }
+
+    // ── Missiles ──────────────────────────────────────────────────────────────
+    for (let i = this.missiles.length - 1; i >= 0; i--) {
+      const m    = this.missiles[i];
+      const hits = m.update(delta, enemies);
+      for (const e of hits) this.onEnemyDestroyed(e);
+      if (m.isExpired) this.missiles.splice(i, 1);
+    }
+
+    // ── Tsunamis (1 damage each, not instant kill) ────────────────────────────
+    for (let i = this.tsunamis.length - 1; i >= 0; i--) {
+      const ts   = this.tsunamis[i];
+      const hits = ts.update(delta);
+      for (const e of hits) { if (e.hit()) this.onEnemyDestroyed(e); }
+      if (ts.isExpired) this.tsunamis.splice(i, 1);
+    }
+
+    // ── Sonic waves ───────────────────────────────────────────────────────────
+    for (let i = this.sonicWaves.length - 1; i >= 0; i--) {
+      const sw   = this.sonicWaves[i];
+      const hits = sw.update(delta, enemies);
+      for (const e of hits) { if (e.hit()) this.onEnemyDestroyed(e); }
+      if (sw.isExpired) this.sonicWaves.splice(i, 1);
+    }
+
+    // ── Laser pair beam updates + proximity damage ────────────────────────────
+    const now = this.time.now;
+    for (let i = this.waveManager.laserPairs.length - 1; i >= 0; i--) {
+      const pair = this.waveManager.laserPairs[i];
+      pair.update(delta);
+
+      // Check if any active player is touching the beam
+      for (const player of this.activePlayers) {
+        if (player.isGhost) continue;
+        if (pair.distanceToBeam(player.x, player.y) < LaserPair.TOUCH_DIST) {
+          const isP1 = player === this.player1;
+          const cd   = isP1 ? this.p1BeamDmgCooldown : this.p2BeamDmgCooldown;
+          if (now > cd) {
+            if (isP1) this.p1BeamDmgCooldown = now + 850;
+            else       this.p2BeamDmgCooldown = now + 850;
+            this.onPlayerHit(isP1 ? 1 : 2);
+          }
+        }
+      }
+
+      // Clean up fully-dead pairs
+      if (pair.isExpired) {
+        pair.destroy();
+        this.waveManager.laserPairs.splice(i, 1);
+      }
     }
 
     // ── Beam hits ────────────────────────────────────────────────────────────
@@ -183,17 +332,90 @@ export class GameScene extends Phaser.Scene {
       });
     }
 
+    // ── Apple pickups ─────────────────────────────────────────────────────────
+    for (const player of this.activePlayers) {
+      if (player.isGhost) continue;
+      this.physics.overlap(player, this.appleGroup, (_p, appleObj) => {
+        const apple = appleObj as Apple;
+        if (!apple.active) return;
+        apple.destroy();
+        const isP1 = player === this.player1;
+        if (isP1) {
+          this.p1Lives = Math.min(this.p1Lives + 1, PLAYER_LIVES);
+          this.p1LivesText.setText(`Lives: ${this.p1Lives}`);
+        } else {
+          this.p2Lives = Math.min(this.p2Lives + 1, PLAYER_LIVES);
+          this.p2LivesText?.setText(`Lives: ${this.p2Lives}`);
+        }
+        SFX.pickupApple();
+        this.showCentreMessage('🍎  +1 LIFE!', '#ff4444');
+      });
+    }
+
+    // ── Super apple pickups (ghosts CAN collect these) ────────────────────────
+    for (const player of this.activePlayers) {
+      this.physics.overlap(player, this.superAppleGroup, (_p, saObj) => {
+        const sa = saObj as SuperApple;
+        if (!sa.active) return;
+        sa.destroy();
+        const isP1    = player === this.player1;
+        const wasGhost = player.isGhost;
+        if (wasGhost) player.revive();
+        if (isP1) {
+          this.p1Lives = PLAYER_LIVES;
+          this.p1LivesText.setText(`Lives: ${this.p1Lives}`);
+        } else {
+          this.p2Lives = PLAYER_LIVES;
+          this.p2LivesText?.setText(`Lives: ${this.p2Lives}`);
+        }
+        SFX.pickupSuperApple();
+        const msg = wasGhost ? '⭐  REVIVED!  FULL LIVES!' : '⭐  FULL LIVES!';
+        this.showCentreMessage(msg, '#44aaff');
+      });
+    }
+
+    // Cull apples that have scrolled off the bottom
+    const { height: sh } = this.scale;
+    this.appleGroup.getChildren().forEach(obj => {
+      const a = obj as Apple;
+      if (a.active && a.y > sh + 40) a.destroy();
+    });
+    this.superAppleGroup.getChildren().forEach(obj => {
+      const sa = obj as SuperApple;
+      if (sa.active && sa.y > sh + 40) sa.destroy();
+    });
+
     // ── Wave advancement ──────────────────────────────────────────────────────
     if (this.waveManager.currentWave > 0 && this.waveManager.isWaveClear) {
       const completedWave = this.waveManager.currentWave;
       this.waveManager.startNextWave();
       this.waveText.setText(`Wave: ${this.waveManager.currentWave}`);
+      SFX.nextWave();
+
+      // Notify multi-wave abilities
+      this.lightningStorms.forEach(s => s.onWaveComplete());
+      this.tornadoes.forEach(t => t.onWaveComplete());
+      this.limeInfections.forEach(l => l.onWaveComplete());
+
+      // Regular apple countdown (every 1–5 waves)
+      this.appleCountdown--;
+      if (this.appleCountdown <= 0) {
+        this.spawnApple();
+        this.appleCountdown = Phaser.Math.Between(1, 5);
+      }
+
+      // Super apple countdown (every 6–10 waves)
+      this.superAppleCountdown--;
+      if (this.superAppleCountdown <= 0) {
+        this.spawnSuperApple();
+        this.superAppleCountdown = Phaser.Math.Between(6, 10);
+      }
 
       if (completedWave % 4 === 0) {
-        this.p1BhCharges++;
-        if (this.playerCount === 2) this.p2BhCharges++;
+        this.p1BhCharges += ABILITY_CHARGES[this.p1AbilityType] ?? 1;
+        if (this.playerCount === 2) this.p2BhCharges += ABILITY_CHARGES[this.p2AbilityType] ?? 1;
         this.updateBhHud();
-        this.showCentreMessage('⚫  Black Hole charged!', '#cc00ff');
+        this.showCentreMessage(`⚡  ${ABILITY_LABEL[this.p1AbilityType]} charged!`, '#cc00ff');
       }
     }
 
@@ -214,40 +436,78 @@ export class GameScene extends Phaser.Scene {
     if (!this.player1.isGhost)
       this.updateBeamBar(this.player1.beam, this.p1BeamFill, this.p1BeamLabel, this.p1HudColor, this.p1HudColor);
     if (this.player2 && !this.player2.isGhost && this.p2BeamFill && this.p2BeamLabel)
-      this.updateBeamBar(this.player2.beam, this.p2BeamFill, this.p2BeamLabel, 0xff8800, 0xff6600);
+      this.updateBeamBar(this.player2.beam, this.p2BeamFill, this.p2BeamLabel, this.p2HudColor, this.p2HudColor);
   }
 
-  // ── Solo config builder ───────────────────────────────────────────────────
+  // ── Player config / texture builder ─────────────────────────────────────
 
-  private buildSoloConfig(color: number): PlayerConfig {
-    // Generate a uniquely-coloured ship texture for this run
+  /**
+   * Generates a coloured ship texture and returns a PlayerConfig that uses it.
+   * @param color      Ship body colour (hex)
+   * @param textureKey Unique texture cache key (e.g. 'player-p1-custom')
+   * @param face       'smile' for P1 look, 'stern' for P2 look
+   * @param base       The base config whose controls/keys are inherited
+   */
+  private buildPlayerConfig(
+    color:      number,
+    textureKey: string,
+    face:       'smile' | 'stern',
+    base:       PlayerConfig,
+  ): PlayerConfig {
     const g = this.make.graphics({ x: 0, y: 0 });
 
-    g.fillStyle(color);
+    // Triangle body
+    g.fillStyle(color, 1);
     g.fillTriangle(16, 0, 0, 32, 32, 32);
 
-    // Eyes (white sclera, black pupil, white highlight)
-    g.fillStyle(0xffffff); g.fillCircle(11, 20, 4);
-    g.fillStyle(0xffffff); g.fillCircle(21, 20, 4);
-    g.fillStyle(0x000000); g.fillCircle(11, 20, 2);
-    g.fillStyle(0x000000); g.fillCircle(21, 20, 2);
-    g.fillStyle(0xffffff); g.fillCircle(12, 19, 1);
-    g.fillStyle(0xffffff); g.fillCircle(22, 19, 1);
+    // Eyes — white sclera, black pupil, white highlight
+    g.fillStyle(0xffffff, 1); g.fillCircle(11, 20, 4);
+    g.fillStyle(0xffffff, 1); g.fillCircle(21, 20, 4);
+    g.fillStyle(0x000000, 1); g.fillCircle(11, 20, 2);
+    g.fillStyle(0x000000, 1); g.fillCircle(21, 20, 2);
+    g.fillStyle(0xffffff, 1); g.fillCircle(12, 19, 1);
+    g.fillStyle(0xffffff, 1); g.fillCircle(22, 19, 1);
 
-    // Smile
-    g.lineStyle(2, 0x000000, 1);
-    g.beginPath(); g.arc(16, 26, 4, 0, Math.PI, false); g.strokePath();
+    if (face === 'smile') {
+      // Happy curve
+      g.lineStyle(2, 0x000000, 1);
+      g.beginPath(); g.arc(16, 26, 4, 0, Math.PI, false); g.strokePath();
+    } else {
+      // Stern brows + flat mouth
+      g.lineStyle(2, 0x000000, 1);
+      g.beginPath(); g.moveTo(8, 14);  g.lineTo(14, 16); g.strokePath();
+      g.beginPath(); g.moveTo(24, 14); g.lineTo(18, 16); g.strokePath();
+      g.beginPath(); g.moveTo(12, 26); g.lineTo(20, 26); g.strokePath();
+    }
 
-    g.generateTexture('player-solo-ship', 32, 32);
+    g.generateTexture(textureKey, 32, 32);
     g.destroy();
 
     return {
-      ...PLAYER1_CONFIG,
-      textureKey:   'player-solo-ship',
-      shipTint:     0xffffff,
-      peltTint:     color,
-      beamColor:    color,
+      ...base,
+      textureKey,
+      shipTint:  0xffffff,
+      peltTint:  color,
+      beamColor: color,
     };
+  }
+
+  // ── Apple spawning ────────────────────────────────────────────────────────
+
+  private spawnApple(): void {
+    const { width } = this.scale;
+    const x     = Phaser.Math.Between(60, width - 60);
+    const apple = new Apple(this, x, -30);
+    this.appleGroup.add(apple);
+    this.showCentreMessage('🍎  Apple incoming!', '#ff6666');
+  }
+
+  private spawnSuperApple(): void {
+    const { width } = this.scale;
+    const x          = Phaser.Math.Between(60, width - 60);
+    const superApple = new SuperApple(this, x, -30);
+    this.superAppleGroup.add(superApple);
+    this.showCentreMessage('⭐  SUPER APPLE!', '#44aaff');
   }
 
   // ── Zolt lightning ────────────────────────────────────────────────────────
@@ -256,36 +516,72 @@ export class GameScene extends Phaser.Scene {
     this.lightningEffects.push(
       new LightningEffect(this, zolt.x, zolt.y, target.x, target.y),
     );
+    SFX.zoltBolt();
     const num = target === this.player1 ? 1 : 2;
     this.onPlayerHit(num as 1 | 2);
   }
 
-  // ── Black hole deployment ─────────────────────────────────────────────────
+  // ── Ability deployment ────────────────────────────────────────────────────
 
-  private handleBlackHoleDeployment(): void {
+  private handleAbilityDeployment(): void {
     if (this.player1.wantsBlackHole && this.p1BhCharges > 0 && !this.player1.isGhost) {
       this.p1BhCharges--;
       this.updateBhHud();
-      this.deployBlackHole(this.player1);
+      this.deployAbility(this.player1, this.p1AbilityType);
     }
     if (this.player2?.wantsBlackHole && this.p2BhCharges > 0 && !this.player2.isGhost) {
       this.p2BhCharges--;
       this.updateBhHud();
-      this.deployBlackHole(this.player2);
+      this.deployAbility(this.player2, this.p2AbilityType);
     }
   }
 
-  private deployBlackHole(player: PlayerShip): void {
-    const bx = player.x;
-    const by = Math.max(player.y - BH_DEPLOY_DIST, 60);
-    this.blackHoles.push(new BlackHole(this, bx, by));
+  private deployAbility(player: PlayerShip, type: AbilityType): void {
+    switch (type) {
+      case 'blackhole':
+        this.blackHoles.push(new BlackHole(this, player.x, Math.max(player.y - BH_DEPLOY_DIST, 60)));
+        SFX.abilityBlackHole();
+        break;
+      case 'fire':
+        this.fireCharges.push(new FireCharge(this, player.x, player.y));
+        SFX.abilityMeteor();
+        break;
+      case 'lightning-storm':
+        this.lightningStorms.push(new LightningStorm(this, player));
+        SFX.abilityLightningStorm();
+        break;
+      case 'tornado':
+        this.tornadoes.push(new WaterTornado(this, player.x, Math.max(player.y - BH_DEPLOY_DIST, 60)));
+        SFX.abilityTornado();
+        break;
+      case 'salmon':
+        this.salmonSalvos.push(new SalmonSalvo(this, player.x, player.y));
+        SFX.abilitySalmon();
+        break;
+      case 'infection':
+        this.limeInfections.push(new LimeInfection(this, this.waveManager.enemies));
+        SFX.abilityInfection();
+        break;
+      case 'missile':
+        this.missiles.push(new Missile(this, player.x, player.y - 20));
+        SFX.abilityMissile();
+        break;
+      case 'tsunami':
+        this.tsunamis.push(new Tsunami(this, this.waveManager.enemies));
+        SFX.abilityTsunami();
+        break;
+      case 'sonic-wave':
+        this.sonicWaves.push(new SonicWave(this, player.x, player.y, this.waveManager.enemies));
+        SFX.abilitySonicWave();
+        break;
+    }
   }
 
   // ── HUD helpers ───────────────────────────────────────────────────────────
 
   private updateBhHud(): void {
-    this.p1BhText.setText(`⚫ BH: ${this.p1BhCharges}`);
-    this.p2BhText?.setText(`BH: ${this.p2BhCharges} ⚫`);
+    this.p1BhText.setText(`${ABILITY_LABEL[this.p1AbilityType]}: ${this.p1BhCharges}`);
+    this.p2BhText?.setText(`${ABILITY_LABEL[this.p2AbilityType]}: ${this.p2BhCharges}`);
   }
 
   private updateBeamBar(
@@ -311,9 +607,11 @@ export class GameScene extends Phaser.Scene {
   // ── Combat events ─────────────────────────────────────────────────────────
 
   private onEnemyDestroyed(enemy: EnemyShip): void {
+    if (!enemy.active) return;
     this.score += enemy.points;
     this.scoreText.setText(`Score: ${this.score}`);
     this.showOof(enemy.x, enemy.y);
+    SFX.enemyPop();
     enemy.destroy();
   }
 
@@ -334,11 +632,22 @@ export class GameScene extends Phaser.Scene {
       : this.p1Lives <= 0;
 
     if (bothDead) {
+      SFX.gameOver();
       this.blackHoles.forEach(bh => bh.destroy());
       this.lightningEffects.forEach(le => le.destroy());
+      this.fireCharges.forEach(fc => fc.destroy());
+      this.lightningStorms.forEach(ls => ls.destroy());
+      this.tornadoes.forEach(t => t.destroy());
+      this.salmonSalvos.forEach(ss => ss.destroy());
+      this.limeInfections.forEach(li => li.destroy());
+      this.missiles.forEach(m => m.destroy());
+      this.tsunamis.forEach(ts => ts.destroy());
+      this.sonicWaves.forEach(sw => sw.destroy());
+      this.waveManager.laserPairs.forEach(p => p.destroy());
+      this.waveManager.laserPairs.length = 0;
       this.player1.beam.destroy();
       this.player2?.beam.destroy();
-      this.scene.start('GameOverScene', { score: this.score });
+      this.scene.start('GameOverScene', { score: this.score, wave: this.waveManager.currentWave });
       return;
     }
 
@@ -350,6 +659,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     // Still has lives — brief red tint flash, no transparency
+    SFX.playerHurt();
     player.setTint(0xff4444);
     this.time.delayedCall(250, () => { if (player.active) player.clearTint(); });
   }
