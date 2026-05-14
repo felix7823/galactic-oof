@@ -204,7 +204,6 @@ export class GameScene extends Phaser.Scene {
 
     // ── Mobile joystick + buttons ─────────────────────────────────────────────
     if (this.mob && !this.player1.isGhost) {
-      this.mob.preUpdate();
       const body = this.player1.body as Phaser.Physics.Arcade.Body;
       if (this.mob.joyX !== 0 || this.mob.joyY !== 0) {
         body.setVelocityX(this.mob.joyX * 300);

@@ -25,18 +25,30 @@ export class MobileControls {
   /** True every frame the SHOOT button is held (continuous fire). */
   get shootDown(): boolean { return this._shoot; }
 
-  /** True only on the first frame the LASER button goes down. */
-  get laserJustDown(): boolean { return this._laser && !this._prevLaser; }
+  /**
+   * True only on the first read after the LASER button is pressed.
+   * Auto-clears on read so it can never be double-fired.
+   */
+  get laserJustDown(): boolean {
+    const v = this._laserFired;
+    this._laserFired = false;
+    return v;
+  }
 
-  /** True only on the first frame the POWER button goes down. */
-  get specialJustDown(): boolean { return this._spec && !this._prevSpec; }
+  /**
+   * True only on the first read after the POWER button is pressed.
+   * Auto-clears on read so it can never be double-fired.
+   */
+  get specialJustDown(): boolean {
+    const v = this._specFired;
+    this._specFired = false;
+    return v;
+  }
 
   // ── Private state ─────────────────────────────────────────────────────────
-  private _shoot = false;
-  private _laser = false;
-  private _spec  = false;
-  private _prevLaser = false;
-  private _prevSpec  = false;
+  private _shoot      = false;
+  private _laserFired = false;   // one-shot: set on press, cleared on read
+  private _specFired  = false;   // one-shot: set on press, cleared on read
 
   private readonly scene: Phaser.Scene;
 
@@ -170,12 +182,10 @@ export class MobileControls {
     }
     if (p.id === this.laserPtrId) {
       this.laserPtrId = -1;
-      this._laser = false;
       this.laserBtn.setFillStyle(0x22aaff, 0.25);
     }
     if (p.id === this.specPtrId) {
       this.specPtrId = -1;
-      this._spec = false;
       this.specBtn.setFillStyle(0xff44ee, 0.25);
     }
   }
@@ -189,21 +199,14 @@ export class MobileControls {
       this._shoot = true;
       this.shootBtn.setFillStyle(0x00dd66, 0.60);
     } else if (this.laserPtrId === -1 && d(this.laserBtn) < BTN_RADIUS + BTN_HIT) {
-      this.laserPtrId = p.id;
-      this._laser = true;
+      this.laserPtrId  = p.id;
+      this._laserFired = true;   // one-shot: read once by laserJustDown getter
       this.laserBtn.setFillStyle(0x22aaff, 0.60);
     } else if (this.specPtrId === -1 && d(this.specBtn) < BTN_RADIUS + BTN_HIT) {
-      this.specPtrId = p.id;
-      this._spec = true;
+      this.specPtrId  = p.id;
+      this._specFired = true;    // one-shot: read once by specialJustDown getter
       this.specBtn.setFillStyle(0xff44ee, 0.60);
     }
-  }
-
-  // ── Per-frame call ────────────────────────────────────────────────────────
-  /** Must be called at the very start of GameScene.update() before reading getters. */
-  preUpdate(): void {
-    this._prevLaser = this._laser;
-    this._prevSpec  = this._spec;
   }
 
   destroy(): void {
