@@ -129,6 +129,32 @@ export class PlayerShip extends Phaser.Physics.Arcade.Image {
     }
   }
 
+  // ── Mobile control API ───────────────────────────────────────────────────
+
+  /** Fire a pelt — called every frame the mobile SHOOT button is held. Cooldown handled internally. */
+  mobileFire(time: number): void {
+    if (this.isGhost) return;
+    if (time > this.lastFiredAt + FIRE_COOLDOWN_MS) {
+      this.lastFiredAt = time;
+      this.lasers.add(new Laser(this.scene, this.x, this.y - 20, this.cfg.peltTint));
+      SFX.laser();
+    }
+  }
+
+  /** Activate the energy beam — called when the mobile LASER button is first pressed. */
+  mobileBeam(): void {
+    if (this.isGhost) return;
+    if (this.beam.state === 'idle') SFX.beamFire();
+    this.beam.tryFire();
+  }
+
+  /** Request special ability — called when the mobile POWER button is first pressed. */
+  mobileSpecial(): void {
+    if (!this.isGhost) this.wantsBlackHole = true;
+  }
+
+  // ────────────────────────────────────────────────────────────────────────
+
   setGhost(): void {
     this.isGhost = true;
     this.setAlpha(0.25);

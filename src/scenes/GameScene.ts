@@ -18,7 +18,9 @@ import { Tsunami } from '../abilities/Tsunami';
 import { Apple } from '../entities/Apple';
 import { SuperApple } from '../entities/SuperApple';
 import { LaserPair } from '../entities/LaserPair';
-import { SFX } from '../systems/SoundManager';
+import { SFX }            from '../systems/SoundManager';
+import { IS_MOBILE }      from '../utils/DeviceDetect';
+import { MobileControls } from '../ui/MobileControls';
 
 const PLAYER_LIVES   = 5;
 const SHIP_SIZE      = 32;
@@ -67,6 +69,9 @@ export class GameScene extends Phaser.Scene {
   // Beam-damage cooldown (prevents frame-rate-dependent multi-hits)
   private p1BeamDmgCooldown = 0;
   private p2BeamDmgCooldown = 0;
+
+  // Mobile controls (created only on touch devices)
+  private mob?: MobileControls;
 
   private score    = 0;
   private p1Lives  = PLAYER_LIVES;
@@ -181,11 +186,35 @@ export class GameScene extends Phaser.Scene {
       this.p2BeamFill  = this.add.rectangle(width - 12 - BAR_W + 1, BAR_Y + 13, BAR_W - 2, BAR_H - 2, this.p2HudColor).setOrigin(0);
       this.p2BhText    = this.add.text(width - 12, BAR_Y + 30, `${ABILITY_LABEL[this.p2AbilityType]}: 0`, { fontSize: '11px', color: p2css }).setOrigin(1, 0);
     }
+
+    // Mobile controls — only in 1P mode (2P is desktop-only)
+    if (IS_MOBILE) {
+      this.mob = new MobileControls(this);
+      // Clean up when scene shuts down
+      this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+        this.mob?.destroy();
+        this.mob = undefined;
+      });
+    }
   }
 
   update(time: number, delta: number): void {
     this.player1.update(time, delta);
     this.player2?.update(time, delta);
+
+    // ── Mobile joystick + buttons ─────────────────────────────────────────────
+    if (this.mob && !this.player1.isGhost) {
+      this.mob.preUpdate();
+      const body = this.player1.body as Phaser.Physics.Arcade.Body;
+      if (this.mob.joyX !== 0 || this.mob.joyY !== 0) {
+        body.setVelocityX(this.mob.joyX * 300);
+        body.setVelocityY(this.mob.joyY * 300);
+      }
+      if (this.mob.shootDown)      this.player1.mobileFire(time);
+      if (this.mob.laserJustDown)  this.player1.mobileBeam();
+      if (this.mob.specialJustDown) this.player1.mobileSpecial();
+    }
+
     this.waveManager.cullOffscreen();
 
     const enemies = this.waveManager.enemies;

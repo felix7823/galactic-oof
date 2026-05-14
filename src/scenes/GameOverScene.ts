@@ -1,5 +1,6 @@
 import * as Phaser from 'phaser';
 import { submitRun, getHighScore, getHighWave } from '../systems/HighScores';
+import { IS_MOBILE } from '../utils/DeviceDetect';
 
 export class GameOverScene extends Phaser.Scene {
   constructor() {
@@ -57,14 +58,22 @@ export class GameOverScene extends Phaser.Scene {
     }).setOrigin(0.5);
 
     // ── Prompt ────────────────────────────────────────────────────────────────
-    const restartText = this.add.text(width / 2, height * 0.88, 'Press SPACE to play again', {
+    const restartLabel = IS_MOBILE ? 'Tap to play again' : 'Press SPACE to play again';
+    const restartText = this.add.text(width / 2, height * 0.88, restartLabel, {
       fontSize: '20px', color: '#aaaaaa',
     }).setOrigin(0.5);
 
     this.tweens.add({ targets: restartText, alpha: 0, duration: 600, yoyo: true, repeat: -1 });
 
-    this.input.keyboard!.once('keydown-SPACE', () => {
-      this.scene.start('MenuScene');
-    });
+    if (IS_MOBILE) {
+      // Slight delay so the last-frame tap that caused game over doesn't instantly restart
+      this.time.delayedCall(600, () => {
+        this.input.once('pointerdown', () => this.scene.start('MenuScene'));
+      });
+    } else {
+      this.input.keyboard!.once('keydown-SPACE', () => {
+        this.scene.start('MenuScene');
+      });
+    }
   }
 }

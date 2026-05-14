@@ -1,4 +1,5 @@
 import * as Phaser from 'phaser';
+import { IS_MOBILE } from '../utils/DeviceDetect';
 
 interface Slide {
   title: string;
@@ -82,18 +83,28 @@ export class TutorialScene extends Phaser.Scene {
 
     this.enterKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER);
 
+    // Mobile: tap anywhere on screen to advance
+    if (IS_MOBILE) {
+      this.input.on('pointerdown', this.advanceSlide, this);
+    }
+
     this.showSlide();
   }
 
   update(): void {
     if (Phaser.Input.Keyboard.JustDown(this.enterKey)) {
-      this.currentSlide++;
-      if (this.currentSlide >= SLIDES.length) {
-        this.input.keyboard!.removeKey(this.enterKey);
-        this.scene.start('MenuScene');
-      } else {
-        this.showSlide();
-      }
+      this.advanceSlide();
+    }
+  }
+
+  private advanceSlide(): void {
+    this.currentSlide++;
+    if (this.currentSlide >= SLIDES.length) {
+      this.input.keyboard!.removeKey(this.enterKey);
+      this.input.off('pointerdown', this.advanceSlide, this);
+      this.scene.start('MenuScene');
+    } else {
+      this.showSlide();
     }
   }
 
@@ -145,7 +156,9 @@ export class TutorialScene extends Phaser.Scene {
     });
 
     // ── Footer prompt ────────────────────────────────────────────────────────
-    const promptText = isLast ? 'Press ENTER to return to menu' : 'Press ENTER to continue';
+    const promptText = IS_MOBILE
+      ? (isLast ? 'Tap to return to menu' : 'Tap to continue')
+      : (isLast ? 'Press ENTER to return to menu' : 'Press ENTER to continue');
     const prompt = this.add.text(width / 2, height - 36, promptText, {
       fontSize: '16px',
       color: DIM_GREY,
