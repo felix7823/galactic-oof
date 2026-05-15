@@ -28,6 +28,7 @@ const COLOR_NAMES: Record<number, string> = {
 
 export class ColorSelectScene extends Phaser.Scene {
   private playerCount: 1 | 2 = 1;
+  private gameMode: 'normal' | 'tutorial' = 'normal';
   private p1Index = 0;
   private p2Index = 2;
 
@@ -57,8 +58,9 @@ export class ColorSelectScene extends Phaser.Scene {
     super({ key: 'ColorSelectScene' });
   }
 
-  init(data: { players?: 1 | 2 }): void {
+  init(data: { players?: 1 | 2; mode?: 'normal' | 'tutorial' }): void {
     this.playerCount = data?.players ?? 1;
+    this.gameMode    = data?.mode    ?? 'normal';
     this.p1Index = 0;
     this.p2Index = 2;
   }
@@ -306,6 +308,7 @@ export class ColorSelectScene extends Phaser.Scene {
       players: this.playerCount,
       p1Color: PALETTE[this.p1Index],
       p2Color: PALETTE[this.p2Index],
+      mode:    this.gameMode,
     });
   }
 

@@ -38,6 +38,7 @@ export class GameScene extends Phaser.Scene {
   private p2SelectedColor: number = 0x00aaff;
   private p1HudColor:      number = 0x00ffcc;
   private p2HudColor:      number = 0xff8800;
+  private gameMode: 'normal' | 'tutorial' = 'normal';
 
   private player1!: PlayerShip;
   private player2?: PlayerShip;          // undefined in 1-player mode
@@ -95,10 +96,11 @@ export class GameScene extends Phaser.Scene {
     super({ key: 'GameScene' });
   }
 
-  init(data: { players?: 1 | 2; p1Color?: number; p2Color?: number }): void {
+  init(data: { players?: 1 | 2; p1Color?: number; p2Color?: number; mode?: 'normal' | 'tutorial' }): void {
     this.playerCount      = data?.players  ?? 2;
     this.p1SelectedColor  = data?.p1Color  ?? 0xff0055;
     this.p2SelectedColor  = data?.p2Color  ?? 0x00aaff;
+    this.gameMode         = data?.mode     ?? 'normal';
   }
 
   create(): void {
@@ -160,8 +162,13 @@ export class GameScene extends Phaser.Scene {
       ? [this.player1, this.player2]
       : [this.player1];
 
-    this.waveManager = new WaveManager(this);
+    this.waveManager = new WaveManager(this, this.gameMode === 'tutorial');
     this.waveManager.startNextWave();
+
+    // Show first tutorial hint slightly after scene loads
+    if (this.gameMode === 'tutorial') {
+      this.time.delayedCall(800, () => this.showTutorialHint(1));
+    }
 
     // ── HUD ──────────────────────────────────────────────────────────────────
     this.scoreText = this.add.text(width / 2, 12, 'Score: 0', { fontSize: '18px', color: '#ffffff' }).setOrigin(0.5, 0);
@@ -415,10 +422,21 @@ export class GameScene extends Phaser.Scene {
 
     // ── Wave advancement ──────────────────────────────────────────────────────
     if (this.waveManager.currentWave > 0 && this.waveManager.isWaveClear) {
+      // Tutorial complete check (must come before startNextWave)
+      if (this.waveManager.isTutorialComplete) {
+        this.showTutorialComplete();
+        return;
+      }
+
       const completedWave = this.waveManager.currentWave;
       this.waveManager.startNextWave();
       this.waveText.setText(`Wave: ${this.waveManager.currentWave}`);
       SFX.nextWave();
+
+      // Tutorial: show a teaching hint when a new enemy type first appears
+      if (this.gameMode === 'tutorial') {
+        this.showTutorialHint(this.waveManager.currentWave);
+      }
 
       // Notify multi-wave abilities
       this.lightningStorms.forEach(s => s.onWaveComplete());
@@ -716,5 +734,120 @@ export class GameScene extends Phaser.Scene {
     const { width } = this.scale;
     const t = this.add.text(width / 2, 200, msg, { fontSize: '20px', color, fontStyle: 'bold' }).setOrigin(0.5).setAlpha(0);
     this.tweens.add({ targets: t, alpha: 1, duration: 300, yoyo: true, hold: 1400, onComplete: () => t.destroy() });
+  }
+
+  // ── Tutorial helpers ──────────────────────────────────────────────────────
+
+  private readonly TUTORIAL_HINTS: Record<number, { lines: string[]; color: string }> = {
+    1: {
+      color: '#ff8844',
+      lines: [
+        'WAVE 1 — GROK',
+        'Dodge enemies  •  Shoot to destroy',
+      ],
+    },
+    3: {
+      color: '#ff44aa',
+      lines: [
+        'WAVE 3 — SKETH',
+        'Faster! In tutorial they still die in one hit.',
+      ],
+    },
+    6: {
+      color: '#ffdd00',
+      lines: [
+        'WAVE 6 — ZOLT',
+        'Stay away! It fires lightning if you get close.',
+      ],
+    },
+    8: {
+      color: '#ff4444',
+      lines: [
+        'WAVE 8 — LASER BARRIER',
+        "Don't touch the beam!  Shoot the red nodes.",
+      ],
+    },
+  };
+
+  private showTutorialHint(wave: number): void {
+    const hint = this.TUTORIAL_HINTS[wave];
+    if (!hint) return;
+
+    const { width, height } = this.scale;
+    const cx = width / 2;
+    const cy = height / 2;
+
+    // Panel background
+    const panel = this.add.rectangle(cx, cy, width * 0.78, 80, 0x000000, 0.75)
+      .setDepth(50).setAlpha(0);
+
+    const title = this.add.text(cx, cy - 14, hint.lines[0], {
+      fontSize: '18px', color: hint.color, fontStyle: 'bold',
+    }).setOrigin(0.5).setDepth(51).setAlpha(0);
+
+    const body = this.add.text(cx, cy + 14, hint.lines[1], {
+      fontSize: '13px', color: '#cccccc',
+      wordWrap: { width: width * 0.72 }, align: 'center',
+    }).setOrigin(0.5).setDepth(51).setAlpha(0);
+
+    const targets = [panel, title, body];
+    this.tweens.add({
+      targets,
+      alpha: 1,
+      duration: 300,
+      hold: 2800,
+      yoyo: true,
+      onComplete: () => targets.forEach(t => t.destroy()),
+    });
+  }
+
+  private showTutorialComplete(): void {
+    const { width, height } = this.scale;
+    const cx = width / 2;
+
+    // Freeze further updates by stopping wave checks — mark wave as done
+    SFX.nextWave();
+
+    this.add.rectangle(cx, height / 2, width, height, 0x000000, 0.65).setDepth(60);
+
+    this.add.text(cx, height * 0.28, 'TUTORIAL', {
+      fontSize: '20px', color: '#ffdd00', fontStyle: 'bold',
+    }).setOrigin(0.5).setDepth(61);
+
+    this.add.text(cx, height * 0.38, 'COMPLETE!', {
+      fontSize: '48px', color: '#00ffcc', fontStyle: 'bold',
+    }).setOrigin(0.5).setDepth(61);
+
+    this.add.text(cx, height * 0.52, `Score: ${this.score}`, {
+      fontSize: '24px', color: '#ffffff',
+    }).setOrigin(0.5).setDepth(61);
+
+    this.add.text(cx, height * 0.62,
+      "You've learned the basics!\nReady for the real thing?",
+      { fontSize: '16px', color: '#aaaaaa', align: 'center' },
+    ).setOrigin(0.5).setDepth(61);
+
+    // Normal mode button
+    const btnY = height * 0.76;
+    const btn = this.add.rectangle(cx, btnY, 260, 56, 0x00ffcc, 0.15)
+      .setStrokeStyle(2, 0x00ffcc, 0.8)
+      .setDepth(61)
+      .setInteractive();
+    const btnTxt = this.add.text(cx, btnY, 'PLAY NORMAL MODE', {
+      fontSize: '18px', color: '#00ffcc', fontStyle: 'bold',
+    }).setOrigin(0.5).setDepth(62);
+    this.tweens.add({ targets: [btn, btnTxt], alpha: 0.35, duration: 650, yoyo: true, repeat: -1 });
+    btn.on('pointerdown', () => {
+      this.scene.start('ColorSelectScene', { players: 1, mode: 'normal' });
+    });
+
+    // Also SPACE / tap
+    this.input.keyboard?.once('keydown-SPACE', () => {
+      this.scene.start('ColorSelectScene', { players: 1, mode: 'normal' });
+    });
+
+    // Disable further game logic by stopping player movement
+    this.player1.setGhost();
+    this.player2?.setGhost();
   }
 }
